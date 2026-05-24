@@ -1,7 +1,6 @@
 # LR UNet Autoencoder (PyTorch + uv)
 
-This project trains a simple image-to-image autoencoder on the same low-resolution dataset used by the consistency model setup.
-
+This project trains a simple image-to-image autoencoder and can be used for inference.
 The model is a small 3-level UNet with stride-2 convolutions for downsampling and transposed convolutions for upsampling. It uses no pooling layers.
 
 ## Dataset Defaults
@@ -47,7 +46,7 @@ From the project root:
 
 ```bash
 # Create and activate a virtual environment
-uv venv --python 3.11
+uv venv --python 3.13
 source .venv/bin/activate
 
 # Install package and dependencies
