@@ -1,0 +1,18 @@
+data:
+  train_dir: /path/to/your/train_data   # TODO: set to your local data directory
+  val_dir: null
+  image_size: 192
+  val_fraction_if_no_val_dir: 0.1
+  seed: 42
+
+train:
+  output_dir: outputs/simple_lr_autoencoder
+  batch_size: 16
+  num_workers: 1
+  epochs: 5
+  lr: 0.001
+  weight_decay: 0.0
+  in_channels: 4
+  base_channels: 32
+  amp: true
+  save_every: 1
