@@ -9,7 +9,6 @@ import torch
 
 from lr_autoencoder.config import InferenceConfig, load_inference_config
 from lr_autoencoder.data import (
-    _center_crop,
     _per_image_minmax,
     _to_chw_float32,
     get_tiff_chw_shape,
@@ -321,17 +320,25 @@ def infer_image_tiled_valid_padding(
     return recon, prepared
 
 
-def infer_image(model: torch.nn.Module, image_path: str | Path, image_size: int, device: str | torch.device) -> np.ndarray:
+def infer_image(model: torch.nn.Module, image_path: str | Path, device: str | torch.device) -> np.ndarray:
     arr = tifffile.imread(image_path)
     x = _to_chw_float32(arr)
-    x = _center_crop(x, image_size)
     x = _per_image_minmax(x)
+    _, orig_h, orig_w = x.shape
+
+    # Pad to multiple of 8 (3 stride-2 down-stages require H,W divisible by 8)
+    pad_h = (8 - orig_h % 8) % 8
+    pad_w = (8 - orig_w % 8) % 8
+    if pad_h or pad_w:
+        x = torch.nn.functional.pad(x, (0, pad_w, 0, pad_h))
+
     x = x.unsqueeze(0).to(device)
 
     with torch.no_grad():
         y = model(x)
 
     y = y.squeeze(0).detach().cpu().numpy()
+    y = y[:, :orig_h, :orig_w]
     y = np.transpose(y, (1, 2, 0))
     return y.astype(np.float32)
 
@@ -342,7 +349,6 @@ def main() -> None:
 
     conv_padding = 0 if args.stitch_mode == "valid" else 1
     model, ckpt = load_model_from_checkpoint(args.checkpoint, device=device, conv_padding=conv_padding)
-    image_size = int(ckpt.get("data_config", {}).get("image_size", 192))
 
     input_path = Path(args.input)
     output_dir = Path(args.output)
@@ -369,11 +375,10 @@ def main() -> None:
                 prepared_save_path = base / f"{path.stem}_prepared_input.tif"
 
         if args.inference_mode == "single":
-            recon = infer_image(model, path, image_size=image_size, device=device)
+            recon = infer_image(model, path, device=device)
             if args.save_residual:
                 arr = tifffile.imread(path)
                 x = _to_chw_float32(arr)
-                x = _center_crop(x, image_size)
                 x = _per_image_minmax(x)
                 prepared = np.transpose(x.numpy(), (1, 2, 0)).astype(np.float32)
             if prepared_save_path is not None:
