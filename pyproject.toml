@@ -16,6 +16,7 @@ dependencies = [
   "tifffile>=2024.2.12",
   "tqdm>=4.66",
   "jupyter>=1.1.1",
+  "Pillow>=10.0",
 ]
 
 [project.optional-dependencies]

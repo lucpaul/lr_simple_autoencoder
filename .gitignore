@@ -21,6 +21,9 @@ env/
 # Outputs and logs (large / machine-specific)
 outputs/
 logs/
+*.tif
+*.png
+*.pt
 
 # Jupyter
 notebooks/.ipynb_checkpoints/

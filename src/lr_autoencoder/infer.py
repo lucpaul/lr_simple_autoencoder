@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import tifffile
 import torch
+from PIL import Image
 
 from lr_autoencoder.config import InferenceConfig, load_inference_config
 from lr_autoencoder.data import (
@@ -15,6 +16,34 @@ from lr_autoencoder.data import (
     make_tiled_inference_loader,
 )
 from lr_autoencoder.model import SimpleUNetAutoencoder
+
+
+def _save_image_as_png(image_hwc: np.ndarray, png_path: Path) -> None:
+    """
+    Save a float32 HxWxC image as PNG using RGB channels only.
+    Normalizes float32 to 0-255 uint8 range.
+    """
+    if image_hwc.ndim != 3:
+        raise ValueError(f"Expected HxWxC image, got shape {image_hwc.shape}")
+    h, w, c = image_hwc.shape
+    channels_to_use = min(c, 3)
+    rgb = image_hwc[:, :, :channels_to_use].astype(np.float32)
+
+    if channels_to_use == 1:
+        rgb = np.repeat(rgb, 3, axis=2)
+
+    rgb_min = rgb.min()
+    rgb_max = rgb.max()
+    if rgb_max > rgb_min:
+        rgb = (rgb - rgb_min) / (rgb_max - rgb_min) * 255.0
+    else:
+        rgb = np.zeros_like(rgb)
+
+    rgb_uint8 = rgb.astype(np.uint8)
+    img = Image.fromarray(rgb_uint8, mode="RGB" if channels_to_use == 3 else "L")
+    if channels_to_use == 1:
+        img = img.convert("RGB")
+    img.save(png_path)
 
 
 def _build_parser(defaults: InferenceConfig | None = None) -> argparse.ArgumentParser:
@@ -388,7 +417,11 @@ def main() -> None:
                     x = _per_image_minmax(x)
                 prepared_chw = x.numpy().astype(np.float32)
                 prepared_save_path.parent.mkdir(parents=True, exist_ok=True)
-                tifffile.imwrite(prepared_save_path, prepared_chw.astype(np.dtype(args.prepared_input_dtype), copy=False))
+                prepared_chw_converted = prepared_chw.astype(np.dtype(args.prepared_input_dtype), copy=False)
+                tifffile.imwrite(prepared_save_path, prepared_chw_converted)
+                prepared_hwc = np.transpose(prepared_chw, (1, 2, 0))
+                prepared_save_path_png = prepared_save_path.parent / f"{prepared_save_path.stem}.png"
+                _save_image_as_png(prepared_hwc, prepared_save_path_png)
         elif args.stitch_mode == "valid":
             recon, prepared = infer_image_tiled_valid_padding(
                 model=model,
@@ -419,11 +452,16 @@ def main() -> None:
             )
 
         out_path = output_dir / f"{path.stem}_recon.tif"
+        out_path_png = output_dir / f"{path.stem}_recon.png"
         tifffile.imwrite(out_path, recon)
+        _save_image_as_png(recon, out_path_png)
         print(f"Wrote {out_path}")
+        print(f"Wrote {out_path_png}")
 
         if prepared_save_path is not None:
             print(f"Wrote {prepared_save_path}")
+            prepared_save_path_png = prepared_save_path.parent / f"{prepared_save_path.stem}.png"
+            print(f"Wrote {prepared_save_path_png}")
 
         if args.save_residual:
             if prepared is None:
@@ -432,8 +470,11 @@ def main() -> None:
                 raise ValueError(f"Residual shape mismatch: recon={recon.shape}, prepared={prepared.shape}")
             residual = (recon - prepared).astype(np.float32)
             residual_path = output_dir / f"{path.stem}_residual.tif"
+            residual_path_png = output_dir / f"{path.stem}_residual.png"
             tifffile.imwrite(residual_path, residual)
+            _save_image_as_png(residual, residual_path_png)
             print(f"Wrote {residual_path}")
+            print(f"Wrote {residual_path_png}")
 
 
 if __name__ == "__main__":
