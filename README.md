@@ -76,6 +76,21 @@ Artifacts are written to `outputs/simple_lr_autoencoder/` by default:
 
 Run inference from a checkpoint on one image or a directory.
 
+### Config-driven inference
+
+You can store inference arguments in [configs/infer.yaml](/p/scratch/hai_earth_04/lucas/lr-unet-autoencoder/configs/infer.yaml) and run either entry point with just a config path:
+
+```bash
+uv run ae-infer --config configs/infer.yaml
+uv run ./src/lr_autoencoder/infer.py --config configs/infer.yaml
+```
+
+CLI flags still override values from the config file, for example:
+
+```bash
+uv run ae-infer --config configs/infer.yaml --device cuda --tile-stride 128
+```
+
 ### Single file
 
 ```bash

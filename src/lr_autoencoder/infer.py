@@ -7,6 +7,7 @@ import numpy as np
 import tifffile
 import torch
 
+from lr_autoencoder.config import InferenceConfig, load_inference_config
 from lr_autoencoder.data import (
     _center_crop,
     _per_image_minmax,
@@ -17,61 +18,87 @@ from lr_autoencoder.data import (
 from lr_autoencoder.model import SimpleUNetAutoencoder
 
 
-def parse_args() -> argparse.Namespace:
+def _build_parser(defaults: InferenceConfig | None = None) -> argparse.ArgumentParser:
+    defaults = defaults or InferenceConfig()
+
     parser = argparse.ArgumentParser(description="Run inference with a trained UNet autoencoder checkpoint")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to best.pt or last.pt")
-    parser.add_argument("--input", type=str, required=True, help="Input TIFF file or directory")
-    parser.add_argument("--output", type=str, required=True, help="Output directory")
-    parser.add_argument("--glob", type=str, default="*.tif", help="Glob pattern when --input is a directory")
+    parser.add_argument("--config", type=str, default=None, help="Path to YAML inference config")
+    parser.add_argument("--checkpoint", type=str, default=defaults.checkpoint, help="Path to best.pt or last.pt")
+    parser.add_argument("--input", type=str, default=defaults.input, help="Input TIFF file or directory")
+    parser.add_argument("--output", type=str, default=defaults.output, help="Output directory")
+    parser.add_argument("--glob", type=str, default=defaults.glob, help="Glob pattern when --input is a directory")
     parser.add_argument(
         "--inference-mode",
         type=str,
-        default="tiled",
+        default=defaults.inference_mode,
         choices=["single", "tiled"],
         help="Inference mode: 'single' loads the full image at once; 'tiled' uses the memory-safe tiling dataloader.",
     )
-    parser.add_argument("--batch-size", type=int, default=8, help="Inference batch size for tiled inference")
-    parser.add_argument("--num-workers", type=int, default=0, help="DataLoader workers for tiled inference")
-    parser.add_argument("--tile-size", type=int, default=192, help="Tile size for large-image tiled inference")
-    parser.add_argument("--tile-stride", type=int, default=192, help="Tile stride for large-image tiled inference")
+    parser.add_argument("--batch-size", type=int, default=defaults.batch_size, help="Inference batch size for tiled inference")
+    parser.add_argument("--num-workers", type=int, default=defaults.num_workers, help="DataLoader workers for tiled inference")
+    parser.add_argument("--tile-size", type=int, default=defaults.tile_size, help="Tile size for large-image tiled inference")
+    parser.add_argument(
+        "--tile-stride",
+        type=int,
+        default=defaults.tile_stride,
+        help="Tile stride for large-image tiled inference",
+    )
     parser.add_argument(
         "--save-prepared-input",
         type=str,
-        default=None,
+        default=defaults.save_prepared_input,
         help="Optional path to save full prepared input array used for inference.",
     )
     parser.add_argument(
         "--prepared-input-dtype",
         type=str,
-        default="float32",
+        default=defaults.prepared_input_dtype,
         choices=["float32", "float64", "uint16", "uint8"],
         help="Dtype for saved prepared input array.",
     )
     parser.add_argument(
         "--prepared-input-raw",
         action="store_true",
+        default=defaults.prepared_input_raw,
         help="Save prepared input without normalization (raw converted dtype).",
     )
     parser.add_argument(
         "--save-residual",
         action="store_true",
+        default=defaults.save_residual,
         help="Also save residual = prediction - prepared_input (float32).",
     )
     parser.add_argument(
         "--stitch-mode",
         type=str,
-        default="average",
+        default=defaults.stitch_mode,
         choices=["average", "crop", "valid"],
         help="Tile stitching mode. 'valid' uses model loaded with conv padding=0.",
     )
     parser.add_argument(
         "--device",
         type=str,
-        default=None,
+        default=defaults.device,
         choices=["cpu", "cuda"],
         help="Inference device. Defaults to cuda if available, else cpu.",
     )
-    return parser.parse_args()
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config", type=str, default=None)
+    config_args, _ = config_parser.parse_known_args()
+
+    defaults = load_inference_config(config_args.config) if config_args.config else InferenceConfig()
+    parser = _build_parser(defaults)
+    args = parser.parse_args()
+
+    missing = [name for name in ("checkpoint", "input", "output") if getattr(args, name) is None]
+    if missing:
+        parser.error(f"Missing required inference arguments: {', '.join('--' + name for name in missing)}")
+
+    return args
 
 
 def load_model_from_checkpoint(

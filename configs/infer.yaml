@@ -1,0 +1,15 @@
+checkpoint: outputs/simple_lr_autoencoder/checkpoints/best.pt
+input: /path/to/image_or_directory
+output: outputs/inference
+glob: "*.tif"
+inference_mode: tiled
+batch_size: 8
+num_workers: 0
+tile_size: 192
+tile_stride: 192
+save_prepared_input: null
+prepared_input_dtype: float32
+prepared_input_raw: false
+save_residual: false
+stitch_mode: average
+device: cpu
